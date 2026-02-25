@@ -1,5 +1,7 @@
 # Computational Data for the Lefschetz Property of Graphic Matroids
 
+[![DOI](https://zenodo.org/badge/1166160242.svg)](https://doi.org/10.5281/zenodo.18764513)
+
 ## Overview
 This dataset contains computational results regarding the Strong Lefschetz Property (SLP) for Artinian Gorenstein algebras associated with graphic matroids. These data support the findings presented in the paper: "Failure of the Lefschetz property for the Graphic Matroid".
 
