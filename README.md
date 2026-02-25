@@ -1,4 +1,4 @@
-# Computational Data for the Lefschetz Property of Graphic Matroids
+# Computational Data of the Lefschetz Property for Graphic Matroids
 
 [![DOI](https://zenodo.org/badge/1166160242.svg)](https://doi.org/10.5281/zenodo.18764513)
 
