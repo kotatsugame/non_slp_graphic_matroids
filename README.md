@@ -10,7 +10,7 @@ This dataset contains computational results regarding the Strong Lefschetz Prope
 
 ## Directory Structure
 - /basis: CSV files containing basis elements for the algebra A_3, represented as 3-tuples of variable indices.
-- /F: Text files containing the components of the polynomial vector F, which generates the kernel of the Hessian matrix.
+- /F: Text files containing the components of the polynomial vector F, which generates the kernel of the Hessian matrix. To reduce file sizes, these components are saved in factored form.
 - /graphs: Text files providing edge lists (vertex set {0..7}).
 - /H: CSV files of the higher Hessian matrices H_{B_3}(f_G).
 - /polynomial: Text files of the basis generating functions f_G.
