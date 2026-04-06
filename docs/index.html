@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Graph Visualization</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body { font-family: 'Helvetica Neue', Arial, sans-serif; margin: 0; padding: 20px; background-color: #f8f9fa; color: #333; }
+        h1 { text-align: center; color: #2c3e50; margin-bottom: 10px; }
+        #controls { 
+            text-align: center; 
+            margin-bottom: 20px; 
+            background: white; 
+            padding: 20px; 
+            border-radius: 8px; 
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1); 
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+        }
+        input[type="number"] {
+            width: 80px;
+            padding: 8px;
+            font-size: 16px;
+            text-align: center;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .nav-btn {
+            padding: 8px 16px;
+            font-size: 16px;
+            font-weight: bold;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .nav-btn:hover { background-color: #2980b9; }
+        .nav-btn:disabled { background-color: #bdc3c7; cursor: not-allowed; }
+        
+        #graph-container { width: 100%; height: 650px; background-color: white; border: 1px solid #e0e0e0; border-radius: 12px; position: relative; overflow: hidden; }
+        .link { stroke: #bdc3c7; stroke-opacity: 0.8; stroke-width: 2.5px; }
+        .node { stroke: #fff; stroke-width: 2px; cursor: move; }
+        .link-label { font-size: 12px; font-weight: bold; fill: #7f8c8d; text-anchor: middle; pointer-events: none; }
+    </style>
+</head>
+<body>
+
+    <h1>Graph Visualization</h1>
+
+    <div id="controls">
+        <button id="prev-btn" class="nav-btn">◀</button>
+        <label for="graph-input">Graph ID (1-152):</label>
+        <input type="number" id="graph-input" value="1" min="1" max="152">
+        <button id="next-btn" class="nav-btn">▶</button>
+        <button id="load-btn" class="nav-btn" style="background-color: #2ecc71;">Load</button>
+    </div>
+
+    <div id="graph-container"></div>
+
+    <script>
+        /**
+         * Configuration & Constants
+         */
+        const numVertices = 8; 
+        const maxGraphIndex = 152; 
+        const containerId = 'graph-container';
+        const dataPathBase = '../graphs/graphs_'; 
+
+        const width = document.getElementById(containerId).clientWidth;
+        const height = document.getElementById(containerId).clientHeight;
+
+        /**
+         * State Management
+         * Positions are preserved between different graphs.
+         */
+        const nodePositions = Array.from({ length: numVertices }, (_, i) => ({
+            id: i,
+            // Initialize positions in a circular layout
+            x: width / 2 + 200 * Math.cos(2 * Math.PI * i / numVertices),
+            y: height / 2 + 200 * Math.sin(2 * Math.PI * i / numVertices)
+        }));
+
+        const svg = d3.select(`#${containerId}`).append('svg')
+            .attr('width', width).attr('height', height);
+        
+        const mainGroup = svg.append('g');
+        const inputEl = document.getElementById('graph-input');
+
+        /**
+         * Fetch and parse the graph data from text file
+         * Format: 
+         * Line 1: Number of edges
+         * Line 2+: u v (edge endpoints)
+         */
+        async function fetchAndParse(index) {
+            try {
+                const response = await fetch(`${dataPathBase}${index}.txt`);
+                if (!response.ok) throw new Error(`File not found: graphs_${index}.txt`);
+                const text = await response.text();
+                const lines = text.trim().split('\n');
+                
+                const links = [];
+                for (let i = 1; i < lines.length; i++) {
+                    const [u, v] = lines[i].trim().split(/\s+/).map(Number);
+                    if (!isNaN(u) && !isNaN(v)) {
+                        // Edge label uses 1-based indexing for readability
+                        links.push({ source: u, target: v, label: `${links.length + 1}` });
+                    }
+                }
+                return links;
+            } catch (e) {
+                console.error(e);
+                alert(`Error loading graph data: ${e.message}`);
+                return [];
+            }
+        }
+
+        /**
+         * Render the graph using D3.js
+         */
+        function render(links) {
+            // Clear previous elements
+            mainGroup.selectAll('*').remove();
+
+            // Color scale for vertices (Categorical colors)
+            const color = d3.scaleOrdinal(d3.schemeCategory10);
+
+            // Draw edges (Lines)
+            const link = mainGroup.append('g').selectAll('line')
+                .data(links).enter().append('line')
+                .attr('class', 'link');
+
+            // Draw edge labels (Numbers only)
+            const linkLabel = mainGroup.append('g').selectAll('text')
+                .data(links).enter().append('text')
+                .attr('class', 'link-label')
+                .text(d => d.label);
+
+            // Draw nodes (Circles)
+            const node = mainGroup.append('g').selectAll('circle')
+                .data(nodePositions).enter().append('circle')
+                .attr('class', 'node')
+                .attr('r', 18)
+                .attr('fill', d => color(d.id))
+                .call(d3.drag()
+                    .on('start', function() { d3.select(this).raise(); })
+                    .on('drag', dragged));
+
+            // Update positions of elements
+            function ticked() {
+                link
+                    .attr('x1', d => nodePositions[d.source].x)
+                    .attr('y1', d => nodePositions[d.source].y)
+                    .attr('x2', d => nodePositions[d.target].x)
+                    .attr('y2', d => nodePositions[d.target].y);
+
+                linkLabel
+                    .attr('x', d => (nodePositions[d.source].x + nodePositions[d.target].x) / 2)
+                    .attr('y', d => (nodePositions[d.source].y + nodePositions[d.target].y) / 2 - 8);
+
+                node
+                    .attr('cx', d => d.x)
+                    .attr('cy', d => d.y);
+            }
+
+            // Handle drag events
+            function dragged(event, d) {
+                d.x = event.x;
+                d.y = event.y;
+                ticked();
+            }
+
+            // Initial position update
+            ticked();
+        }
+
+        /**
+         * Control logic for switching graphs
+         */
+        async function updateGraph() {
+            let idx = parseInt(inputEl.value);
+            // Validation
+            if (isNaN(idx) || idx < 1) idx = 1;
+            if (idx > maxGraphIndex) idx = maxGraphIndex;
+            inputEl.value = idx;
+            
+            const links = await fetchAndParse(idx);
+            render(links);
+        }
+
+        /**
+         * Event Listeners
+         */
+        document.getElementById('load-btn').onclick = updateGraph;
+
+        document.getElementById('prev-btn').onclick = () => {
+            if (parseInt(inputEl.value) > 1) {
+                inputEl.value--;
+                updateGraph();
+            }
+        };
+
+        document.getElementById('next-btn').onclick = () => {
+            if (parseInt(inputEl.value) < maxGraphIndex) {
+                inputEl.value++;
+                updateGraph();
+            }
+        };
+
+        // Support for Enter key in input field
+        inputEl.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') updateGraph();
+        });
+
+        /**
+         * Entry point: Load graph_1.txt by default
+         */
+        (async () => {
+            const links = await fetchAndParse(1);
+            render(links);
+        })();
+
+    </script>
+</body>
+</html>
