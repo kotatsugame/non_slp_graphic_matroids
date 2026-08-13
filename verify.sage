@@ -93,17 +93,36 @@ def run_verification(entry):
 
     # 4. Kernel Vector (F) verification
     kernel_files = [os.path.join(DIR_KERNEL, f"F_{index}.txt")]
+    expected_degrees = [int(entry["deg_f_1"])]
+
     if entry["deg_f_2"]:
         kernel_files.append(os.path.join(DIR_KERNEL, f"F_{index}_2.txt"))
+        expected_degrees.append(int(entry["deg_f_2"]))
 
-    for fpath in kernel_files:
+    kernel_vectors = []
+    for fpath, expected_deg in zip(kernel_files, expected_degrees):
         with open(fpath) as f:
-            # Reconstruct kernel vector F and check H * F == 0
+            # Reconstruct kernel vector F
             F = vector(R, [R(line) for line in f])
-            assert not F.is_zero(), f"Kernel vector F in {fpath} is zero"
+            kernel_vectors.append(F)
+
+            # Degree & Homogeneity check
+            assert not F.is_zero(), f"Kernel vector in {fpath} is exactly zero"
+
+            for k, p in enumerate(F):
+                if not p.is_zero():
+                    assert p.is_homogeneous(), f"Component {k} in {fpath} is not homogeneous"
+                    assert p.degree() == expected_deg, f"Degree mismatch at component {k} in {fpath}: expected {expected_deg}, got {p.degree()}"
+
+    # Linear independence check
+    actual_rank = matrix(FractionField(R), kernel_vectors).rank()
+    assert len(kernel_vectors) == actual_rank, f"Kernel vectors are not linearly independent for index {index} (rank {actual_rank} < {len(kernel_vectors)})"
+
+    # check H * F == 0
+    for F in kernel_vectors:
+        for i in range(H.nrows()):
             # assert (H * F).is_zero(), f"H * F != 0 for index {index}" <- too heavy
-            for i in range(H.nrows()):
-                assert (H[i] * F).is_zero(), f"H * F != 0 for index {index}"
+            assert (H[i] * F).is_zero(), f"H * F != 0 for index {index}"
 
     # 5. Basis (B) consistency with Hessian matrix
     basis_indices = []
