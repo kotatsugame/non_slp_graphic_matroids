@@ -343,6 +343,8 @@ for line in h_lines:
     H_matrix.append(row)
 H = matrix(R, H_matrix)
 
+print(f"Dimensions: Matrix H = {H.dimensions()}, Vector F = {len(F)}")
+
 print("Computing H * F...")
 # Calculating row by row to reduce memory usage and avoid massive matrix multiplication overhead
 result_list = []
