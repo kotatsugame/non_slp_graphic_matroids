@@ -3,18 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Graph Visualization</title>
+    <title>Graph Visualization & Verification</title>
     <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://sagecell.sagemath.org/static/embedded_sagecell.js"></script>
     <style>
         body { font-family: 'Helvetica Neue', Arial, sans-serif; margin: 0; padding: 20px; background-color: #f8f9fa; color: #333; }
         h1 { text-align: center; color: #2c3e50; margin-bottom: 10px; }
-        #controls { 
-            text-align: center; 
-            margin-bottom: 20px; 
-            background: white; 
-            padding: 20px; 
-            border-radius: 8px; 
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1); 
+
+        #controls {
+            text-align: center;
+            margin-bottom: 20px;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
             display: flex;
             justify-content: center;
             align-items: center;
@@ -41,107 +43,137 @@
         }
         .nav-btn:hover { background-color: #2980b9; }
         .nav-btn:disabled { background-color: #bdc3c7; cursor: not-allowed; }
-        
-        #graph-container { width: 100%; height: 650px; background-color: white; border: 1px solid #e0e0e0; border-radius: 12px; position: relative; overflow: hidden; }
+
+        #graph-container {
+            width: 100%; height: 500px;
+            background-color: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 12px;
+            position: relative;
+            overflow: hidden;
+        }
+
         .link { stroke: #bdc3c7; stroke-opacity: 0.8; stroke-width: 2.5px; }
         .node { stroke: #fff; stroke-width: 2px; cursor: move; }
         .link-label { font-size: 12px; font-weight: bold; fill: #7f8c8d; text-anchor: middle; pointer-events: none; }
+
+        .panel {
+            background: white;
+            padding: 20px;
+            margin-top: 20px;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .panel h3 { margin-top: 0; color: #2c3e50; display: flex; align-items: center; gap: 10px; }
+        .note { color: #e74c3c; font-size: 0.8em; font-weight: normal; }
+
+        pre {
+            background: #f4f6f8;
+            padding: 15px;
+            border-radius: 6px;
+            overflow-x: auto;
+            max-height: 400px;
+            overflow-y: auto;
+            font-size: 14px;
+            border: 1px solid #ddd;
+        }
     </style>
 </head>
 <body>
 
-    <h1>Graph Visualization</h1>
+    <h1>Graph Visualization & Verification</h1>
 
     <div id="controls">
         <button id="prev-btn" class="nav-btn">◀</button>
         <label for="graph-input">Graph ID (1-152):</label>
         <input type="number" id="graph-input" value="1" min="1" max="152">
         <button id="next-btn" class="nav-btn">▶</button>
-        <button id="load-btn" class="nav-btn" style="background-color: #2ecc71;">Load</button>
+        <button id="load-btn" class="nav-btn" style="background-color: #2ecc71;">Load Graph</button>
     </div>
 
     <div id="graph-container"></div>
 
+    <div id="edge-info-container" class="panel">
+        <h3>
+            Edge Information
+            <span id="index-display-note" style="font-size:0.8em; font-weight:normal; color:#7f8c8d;">(Currently 1-indexed)</span>
+            <button id="toggle-index-btn" class="nav-btn" style="margin-left: 15px; font-size: 12px; padding: 4px 8px; background-color: #f39c12;">Switch to 0-indexed</button>
+        </h3>
+        <div id="edge-list" style="font-family: monospace; font-size: 16px; word-break: break-all;">Loading...</div>
+    </div>
+
+    <div id="f-container" class="panel">
+        <h3>Vector F <span class="note">(Note: Edge indices inside the file are 0-indexed)</span></h3>
+        <button id="load-f-btn" class="nav-btn">Load F Data</button>
+        <pre id="f-content" style="display: none;"></pre>
+    </div>
+
+    <div id="sage-container" class="panel">
+        <h3>Verify H * F = 0 via SageMath <span class="note">(Note: Edge indices inside the files are 0-indexed)</span></h3>
+        <button id="verify-btn" class="nav-btn" style="background-color: #9b59b6;">Initialize Sage Cell</button>
+        <div id="sage-cell-wrapper" style="display: none; margin-top: 15px;">
+            <div id="sage-cell-container"></div>
+        </div>
+    </div>
+
     <script>
-        /**
-         * Configuration & Constants
-         */
-        const numVertices = 8; 
-        const maxGraphIndex = 152; 
+        const numVertices = 8;
+        const maxGraphIndex = 152;
         const containerId = 'graph-container';
-        const dataPathBase = 'graphs/graphs_'; 
+
+        let isZeroIndexed = false;
+        let currentLinks = [];
+        let currentGraphId = 1;
 
         const width = document.getElementById(containerId).clientWidth;
         const height = document.getElementById(containerId).clientHeight;
 
-        /**
-         * State Management
-         * Positions are preserved between different graphs.
-         */
         const nodePositions = Array.from({ length: numVertices }, (_, i) => ({
             id: i,
-            // Initialize positions in a circular layout
             x: width / 2 + 200 * Math.cos(2 * Math.PI * i / numVertices),
             y: height / 2 + 200 * Math.sin(2 * Math.PI * i / numVertices)
         }));
 
         const svg = d3.select(`#${containerId}`).append('svg')
             .attr('width', width).attr('height', height);
-        
+
         const mainGroup = svg.append('g');
         const inputEl = document.getElementById('graph-input');
 
-        /**
-         * Fetch and parse the graph data from text file
-         * Format: 
-         * Line 1: Number of edges
-         * Line 2+: u v (edge endpoints)
-         */
         async function fetchAndParse(index) {
             try {
-                const response = await fetch(`${dataPathBase}${index}.txt`);
-                if (!response.ok) throw new Error(`File not found: graphs_${index}.txt`);
+                const response = await fetch(`graphs/graphs_${index}.txt`);
+                if (!response.ok) throw new Error(`graphs_${index}.txt not found`);
                 const text = await response.text();
                 const lines = text.trim().split('\n');
-                
+
                 const links = [];
                 for (let i = 1; i < lines.length; i++) {
                     const [u, v] = lines[i].trim().split(/\s+/).map(Number);
                     if (!isNaN(u) && !isNaN(v)) {
-                        // Edge label uses 1-based indexing for readability
-                        links.push({ source: u, target: v, label: `${links.length + 1}` });
+                        links.push({ source: u, target: v, baseIndex: links.length });
                     }
                 }
                 return links;
             } catch (e) {
                 console.error(e);
-                alert(`Error loading graph data: ${e.message}`);
                 return [];
             }
         }
 
-        /**
-         * Render the graph using D3.js
-         */
         function render(links) {
-            // Clear previous elements
             mainGroup.selectAll('*').remove();
-
-            // Color scale for vertices (Categorical colors)
             const color = d3.scaleOrdinal(d3.schemeCategory10);
 
-            // Draw edges (Lines)
             const link = mainGroup.append('g').selectAll('line')
                 .data(links).enter().append('line')
                 .attr('class', 'link');
 
-            // Draw edge labels (Numbers only)
             const linkLabel = mainGroup.append('g').selectAll('text')
                 .data(links).enter().append('text')
                 .attr('class', 'link-label')
-                .text(d => d.label);
+                .text(d => d.baseIndex + (isZeroIndexed ? 0 : 1));
 
-            // Draw nodes (Circles)
             const node = mainGroup.append('g').selectAll('circle')
                 .data(nodePositions).enter().append('circle')
                 .attr('class', 'node')
@@ -151,7 +183,6 @@
                     .on('start', function() { d3.select(this).raise(); })
                     .on('drag', dragged));
 
-            // Update positions of elements
             function ticked() {
                 link
                     .attr('x1', d => nodePositions[d.source].x)
@@ -168,63 +199,189 @@
                     .attr('cy', d => d.y);
             }
 
-            // Handle drag events
             function dragged(event, d) {
                 d.x = event.x;
                 d.y = event.y;
                 ticked();
             }
 
-            // Initial position update
             ticked();
+            updateEdgeListText();
         }
 
-        /**
-         * Control logic for switching graphs
-         */
+        function updateEdgeListText() {
+            const edgeListEl = document.getElementById('edge-list');
+            if (!currentLinks.length) {
+                edgeListEl.textContent = 'Error loading graph.';
+                return;
+            }
+            const offset = isZeroIndexed ? 0 : 1;
+            const edgeStrings = currentLinks.map(d => `(${d.source + offset}, ${d.target + offset})`);
+            edgeListEl.textContent = `Edges (${currentLinks.length}): [ ${edgeStrings.join(', ')} ]`;
+        }
+
+        function resetPanels() {
+            const fContent = document.getElementById('f-content');
+            fContent.style.display = 'none';
+            fContent.textContent = '';
+
+            document.getElementById('edge-list').textContent = 'Loading...';
+
+            const sageWrapper = document.getElementById('sage-cell-wrapper');
+            sageWrapper.style.display = 'none';
+            document.getElementById('sage-cell-container').innerHTML = '';
+        }
+
         async function updateGraph() {
             let idx = parseInt(inputEl.value);
-            // Validation
             if (isNaN(idx) || idx < 1) idx = 1;
             if (idx > maxGraphIndex) idx = maxGraphIndex;
+
             inputEl.value = idx;
-            
-            const links = await fetchAndParse(idx);
-            render(links);
+            currentGraphId = idx;
+
+            resetPanels();
+            currentLinks = await fetchAndParse(idx);
+            render(currentLinks);
         }
 
-        /**
-         * Event Listeners
-         */
         document.getElementById('load-btn').onclick = updateGraph;
-
         document.getElementById('prev-btn').onclick = () => {
             if (parseInt(inputEl.value) > 1) {
                 inputEl.value--;
                 updateGraph();
             }
         };
-
         document.getElementById('next-btn').onclick = () => {
             if (parseInt(inputEl.value) < maxGraphIndex) {
                 inputEl.value++;
                 updateGraph();
             }
         };
-
-        // Support for Enter key in input field
         inputEl.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') updateGraph();
         });
 
-        /**
-         * Entry point: Load graph_1.txt by default
-         */
-        (async () => {
-            const links = await fetchAndParse(1);
-            render(links);
-        })();
+        document.getElementById('toggle-index-btn').onclick = () => {
+            isZeroIndexed = !isZeroIndexed;
+            const btn = document.getElementById('toggle-index-btn');
+            const note = document.getElementById('index-display-note');
 
+            if (isZeroIndexed) {
+                btn.textContent = "Switch to 1-indexed";
+                note.textContent = "(Currently 0-indexed)";
+            } else {
+                btn.textContent = "Switch to 0-indexed";
+                note.textContent = "(Currently 1-indexed)";
+            }
+
+            d3.selectAll('.link-label').text(d => d.baseIndex + (isZeroIndexed ? 0 : 1));
+            updateEdgeListText();
+        };
+
+        document.getElementById('load-f-btn').onclick = async () => {
+            const btn = document.getElementById('load-f-btn');
+            const content = document.getElementById('f-content');
+            btn.disabled = true;
+            btn.textContent = 'Loading...';
+
+            try {
+                const response = await fetch(`F/F_${currentGraphId}.txt`);
+                if (!response.ok) throw new Error(`F_${currentGraphId}.txt not found on server.`);
+                const text = await response.text();
+                content.textContent = text;
+                content.style.display = 'block';
+            } catch (e) {
+                content.textContent = "Error: " + e.message;
+                content.style.display = 'block';
+            }
+
+            btn.disabled = false;
+            btn.textContent = 'Load F Data';
+        };
+
+        document.getElementById('verify-btn').onclick = () => {
+            const sageWrapper = document.getElementById('sage-cell-wrapper');
+            const sageContainer = document.getElementById('sage-cell-container');
+
+            sageContainer.innerHTML = '';
+            sageWrapper.style.display = 'block';
+
+            const targetDiv = document.createElement('div');
+            targetDiv.id = 'sage-cell-target';
+            sageContainer.appendChild(targetDiv);
+
+            const pythonCode = `
+import urllib.request
+
+base_url = "https://kotatsugame.github.io/non_slp_graphic_matroids"
+idx = ${currentGraphId}
+
+print(f"Downloading data for Graph {idx} from GitHub...")
+
+# Fetch F
+req_f = urllib.request.Request(f"{base_url}/F/F_{idx}.txt", headers={'User-Agent': 'Mozilla/5.0'})
+with urllib.request.urlopen(req_f) as response:
+    f_text = response.read().decode('utf-8')
+
+# Fetch H
+req_h = urllib.request.Request(f"{base_url}/H/H_{idx}.csv", headers={'User-Agent': 'Mozilla/5.0'})
+with urllib.request.urlopen(req_h) as response:
+    h_text = response.read().decode('utf-8')
+
+print("Parsing F...")
+# The dataset has at most 22 edges.
+R = PolynomialRing(QQ, 'x', 22)
+f_lines = [line.strip() for line in f_text.strip().splitlines() if line.strip()]
+F = vector(R, [R(line) for line in f_lines])
+
+print("Parsing H...")
+h_lines = [line.strip() for line in h_text.strip().splitlines() if line.strip()]
+H_matrix = []
+for line in h_lines:
+    row = [R(val.strip()) for val in line.split(',') if val.strip()]
+    H_matrix.append(row)
+H = matrix(R, H_matrix)
+
+print("Computing H * F...")
+# Calculating row by row to reduce memory usage and avoid massive matrix multiplication overhead
+result_list = []
+for i in range(H.nrows()):
+    result_list.append(H[i] * F)
+
+result = vector(R, result_list)
+
+print("")
+print("Verification Result:")
+print(result)
+print("")
+if result.is_zero():
+    print("[SUCCESS] H * F is the zero vector!")
+else:
+    print("[FAILED] H * F is NOT the zero vector.")
+`;
+
+            try {
+                const scriptTag = document.createElement('script');
+                scriptTag.type = 'text/x-sage';
+                scriptTag.textContent = pythonCode.trim();
+                targetDiv.appendChild(scriptTag);
+
+                sagecell.makeSagecell({
+                    inputLocation: '#sage-cell-target',
+                    languages: ['sage'],
+                    evalButtonText: 'Evaluate Verification'
+                });
+            } catch (e) {
+                console.error(e);
+                sageContainer.innerHTML = '<p style="color:#e74c3c;">Failed to initialize Sage Cell: ' + e.message + '</p>';
+            }
+        };
+
+        (async () => {
+            currentLinks = await fetchAndParse(1);
+            render(currentLinks);
+        })();
     </script>
 </body>
 </html>
