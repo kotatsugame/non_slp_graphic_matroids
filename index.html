@@ -77,6 +77,14 @@
             font-size: 14px;
             border: 1px solid #ddd;
         }
+
+        footer {
+            text-align: center;
+            margin-top: 40px;
+            margin-bottom: 20px;
+            color: #7f8c8d;
+            font-size: 0.9em;
+        }
     </style>
 </head>
 <body>
@@ -103,8 +111,8 @@
     </div>
 
     <div id="f-container" class="panel">
-        <h3>Vector F <span class="note">(Note: Edge indices inside the file are 0-indexed)</span></h3>
-        <button id="load-f-btn" class="nav-btn">Load F Data</button>
+        <h3>Basis & Vector F <span class="note">(Note: Edge indices inside the files are fixed to 0-indexed)</span></h3>
+        <button id="load-f-btn" class="nav-btn">Load Basis & F Data</button>
         <pre id="f-content" style="display: none;"></pre>
     </div>
 
@@ -115,6 +123,10 @@
             <div id="sage-cell-container"></div>
         </div>
     </div>
+
+    <footer>
+        &copy; 2026 Ryo Takahashi, ryo.takahashi.r2 at dc.tohoku.ac.jp
+    </footer>
 
     <script>
         const numVertices = 8;
@@ -286,10 +298,33 @@
             btn.textContent = 'Loading...';
 
             try {
-                const response = await fetch(`F/F_${currentGraphId}.txt`);
-                if (!response.ok) throw new Error(`F_${currentGraphId}.txt not found on server.`);
-                const text = await response.text();
-                content.textContent = text;
+                const [resF, resBasis] = await Promise.all([
+                    fetch(`F/F_${currentGraphId}.txt`),
+                    fetch(`basis/basis_${currentGraphId}.csv`)
+                ]);
+
+                if (!resF.ok) throw new Error(`F_${currentGraphId}.txt not found on server.`);
+                if (!resBasis.ok) throw new Error(`basis_${currentGraphId}.csv not found on server.`);
+
+                const textF = await resF.text();
+                const textBasis = await resBasis.text();
+
+                const fLines = textF.trim().split('\n');
+                const basisLines = textBasis.trim().split('\n');
+
+                let output = "";
+                for (let i = 0; i < fLines.length; i++) {
+                    const f_val = fLines[i].trim();
+                    if (!f_val) continue;
+
+                    const b_arr = basisLines[i] ? basisLines[i].trim().split(',') : [];
+                    const b_str = b_arr.join(', ');
+
+                    const idxStr = String(i).padStart(3, ' ');
+                    output += `[${idxStr}] Basis (${b_str}) :\n      F = ${f_val}\n\n`;
+                }
+
+                content.textContent = output.trim();
                 content.style.display = 'block';
             } catch (e) {
                 content.textContent = "Error: " + e.message;
@@ -297,7 +332,7 @@
             }
 
             btn.disabled = false;
-            btn.textContent = 'Load F Data';
+            btn.textContent = 'Load Basis & F Data';
         };
 
         document.getElementById('verify-btn').onclick = () => {
