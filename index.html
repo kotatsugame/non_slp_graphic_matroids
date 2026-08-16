@@ -152,6 +152,36 @@
         const mainGroup = svg.append('g');
         const inputEl = document.getElementById('graph-input');
 
+        // Utility to format bytes into readable sizes
+        function formatBytes(bytes, decimals = 1) {
+            if (!+bytes) return '0 Bytes';
+            const k = 1024;
+            const dm = decimals < 0 ? 0 : decimals;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
+        }
+
+        // Fetch file size using HEAD request
+        async function updateFSizeDisplay(idx) {
+            const btn = document.getElementById('load-f-btn');
+            btn.textContent = 'Load Basis & F Data (calculating size...)';
+            try {
+                const response = await fetch(`F/F_${idx}.txt`, { method: 'HEAD' });
+                if (response.ok) {
+                    const contentLength = response.headers.get('Content-Length');
+                    if (contentLength) {
+                        const sizeStr = formatBytes(parseInt(contentLength, 10));
+                        btn.textContent = `Load Basis & F Data (${sizeStr})`;
+                        return;
+                    }
+                }
+            } catch (e) {
+                console.warn("Could not fetch file size:", e);
+            }
+            btn.textContent = 'Load Basis & F Data';
+        }
+
         async function fetchAndParse(index) {
             try {
                 const response = await fetch(`graphs/graphs_${index}.txt`);
@@ -253,6 +283,7 @@
             currentGraphId = idx;
 
             resetPanels();
+            updateFSizeDisplay(idx); // Fetch size in background
             currentLinks = await fetchAndParse(idx);
             render(currentLinks);
         }
@@ -294,8 +325,11 @@
         document.getElementById('load-f-btn').onclick = async () => {
             const btn = document.getElementById('load-f-btn');
             const content = document.getElementById('f-content');
+
+            // Backup the text to preserve the size info like "Load Basis & F Data (2.3 MB)"
+            const originalText = btn.textContent;
             btn.disabled = true;
-            btn.textContent = 'Loading...';
+            btn.textContent = 'Downloading...';
 
             try {
                 const [resF, resBasis] = await Promise.all([
@@ -332,7 +366,7 @@
             }
 
             btn.disabled = false;
-            btn.textContent = 'Load Basis & F Data';
+            btn.textContent = originalText;
         };
 
         document.getElementById('verify-btn').onclick = () => {
@@ -415,9 +449,9 @@ else:
             }
         };
 
+        // Initialize application on load
         (async () => {
-            currentLinks = await fetchAndParse(1);
-            render(currentLinks);
+            await updateGraph(); // This handles graph fetch, size fetch, and render
         })();
     </script>
 </body>
